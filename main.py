@@ -1,151 +1,142 @@
+import sys
 import os
 import re
 import time
-
 import pyautogui
 import pyperclip
 
-next_button_image = "next_button.png"
-num_pages = 6
-all_pages_members = []
-
-
-def extract_members(text):
-    lines = text.splitlines()
-    cleaned_lines = [l.strip() for l in lines if l.strip()]
-
-    email_pattern = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
-    records = []
-    i = 0
-    while i < len(cleaned_lines):
-        name_line = cleaned_lines[i]
-
-        if i + 1 < len(cleaned_lines):
-            email_line = cleaned_lines[i + 1]
-        else:
-            email_line = ""
-
-        if i + 2 < len(cleaned_lines):
-            role_line = cleaned_lines[i + 2]
-        else:
-            role_line = ""
-
-        # メール形式チェック & ロールが "メンバー"
-        if role_line == "メンバー" and email_pattern.match(email_line):
-            records.append((name_line, email_line, role_line))
-            i += 3
-        else:
-            i += 1
-
-    return records
-
-
-def debug_screenshot():
-    """
-    デバッグ用に現在の画面をスクリーンショットし保存。
-    """
-    print("[DEBUG] Taking screenshot of current screen...")
-    screenshot_path = "current_screen.png"
-    pyautogui.screenshot(screenshot_path)
-    if os.path.exists(screenshot_path):
-        print(f"[DEBUG] Screenshot saved to {screenshot_path}")
+def main():
+    # ------------------------------------
+    # コマンドライン引数からページ数を取得
+    # ------------------------------------
+    if len(sys.argv) > 1:
+        # python main.py 22 の場合 -> sys.argv[1] = "22"
+        num_pages = int(sys.argv[1])
     else:
-        print("[DEBUG] Failed to save screenshot.")
+        # 引数が無ければデフォルト値 6 を使用
+        num_pages = 6
 
+    print(f"[INFO] Number of pages to process: {num_pages}")
 
-def safe_locate_on_screen(image, confidence=0.9):
-    """
-    ImageNotFoundExceptionが発生した場合Noneを返す安全なlocateOnScreen
-    """
+    all_pages_members = []
+
+    def extract_members(text):
+        print("[DEBUG] Starting text extraction...")
+        lines = text.splitlines()
+        cleaned_lines = [l.strip() for l in lines if l.strip()]
+
+        email_pattern = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+        records = []
+        i = 0
+        while i < len(cleaned_lines):
+            name_line = cleaned_lines[i]
+            email_line = cleaned_lines[i + 1] if (i + 1 < len(cleaned_lines)) else ""
+            role_line = cleaned_lines[i + 2] if (i + 2 < len(cleaned_lines)) else ""
+
+            # メール形式チェック & ロールが "メンバー"
+            if role_line == "メンバー" and email_pattern.match(email_line):
+                records.append((name_line, email_line, role_line))
+                i += 3
+            else:
+                i += 1
+
+        print(f"[DEBUG] Extracted {len(records)} member records from text.")
+        return records
+
+    # デバッグ用スクリーンショット関数
+    def debug_screenshot():
+        print("[DEBUG] Taking screenshot of current screen...")
+        screenshot_path = "current_screen.png"
+        pyautogui.screenshot(screenshot_path)
+        if os.path.exists(screenshot_path):
+            print(f"[DEBUG] Screenshot saved to {screenshot_path}")
+        else:
+            print("[DEBUG] Failed to save screenshot.")
+
+    # ------------------------------------
+    # 画像検索は使わず、座標クリックに変更する前提
+    # ------------------------------------
+    TARGET_X, TARGET_Y = 1164, 965  # ログなどから取得した座標
+
+    print("[INFO] Starting in 5 seconds (countdown)...")
+    for i in range(3, 0, -1):
+        print(f"[INFO] {i}...")
+        time.sleep(1)
+
+    # ------------------------------------
+    # メインループ: 指定ページ数だけ繰り返し
+    # ------------------------------------
+    for page in range(1, num_pages + 1):
+        print(f"[INFO] ===== Page {page} / {num_pages} =====")
+
+        # 全選択＆コピー（Windowsの場合: winleft + a / winleft + c）
+        print("[INFO] Selecting all text (winleft + a) ...")
+        pyautogui.hotkey("winleft", "a")
+        time.sleep(0.5)
+
+        print("[INFO] Copying to clipboard (winleft + c) ...")
+        pyautogui.hotkey("winleft", "c")
+        time.sleep(0.5)
+
+        # クリップボードからテキストを取得
+        print("[INFO] Reading text from clipboard...")
+        copied_text = pyperclip.paste()
+        print(f"[DEBUG] Clipboard text length: {len(copied_text)}")
+
+        print("[INFO] Extracting member info from text...")
+        members = extract_members(copied_text)
+        all_pages_members.extend(members)
+
+        # 次のページがある場合のみページ送り
+        if page < num_pages:
+            print(f"[INFO] Moving to next page (page {page+1})")
+
+            screen_size = pyautogui.size()
+            print(f"[DEBUG] Screen size: {screen_size}")
+            mouse_pos = pyautogui.position()
+            print(f"[DEBUG] Current mouse position: {mouse_pos}")
+
+            for idx in range(1, 3):
+                print(f"[INFO] Pressing PageDown #{idx}")
+                pyautogui.press("pagedown")
+                time.sleep(0.5)
+
+            print(f"[INFO] Moving mouse to next button (X={TARGET_X}, Y={TARGET_Y})")
+            pyautogui.moveTo(TARGET_X, TARGET_Y, duration=0.5)
+            print("[INFO] Clicking next page button...")
+            pyautogui.click()
+
+            print("[INFO] Waiting 5 seconds for the page to load...")
+            for i in range(5, 0, -1):
+                print(f"[INFO] {i}...")
+                time.sleep(1)
+
+            print("[INFO] Pressing Home key to go to the top of the page...")
+            pyautogui.press("home")
+
+    # ------------------------------------
+    # 結果の書き出し
+    # ------------------------------------
+    output_file = "members.txt"
+    print(f"[INFO] Writing all member data to {output_file}...")
+    with open(output_file, "w", encoding="utf-8") as f:
+        f.write("名前,メール,ロール\n")
+        for name, email, role in all_pages_members:
+            f.write(f"{name},{email},{role}\n")
+
+    print("[INFO] All pages processed successfully.")
+    print(f"[INFO] Member list has been saved to {output_file}.")
+
+    # ------------------------------------
+    # members.txt をクリップボードへコピー
+    # ------------------------------------
     try:
-        return pyautogui.locateOnScreen(image, confidence=confidence)
-    except pyautogui.ImageNotFoundException:
-        return None
+        with open(output_file, "r", encoding="utf-8") as f:
+            members_data = f.read()
+        pyperclip.copy(members_data)
+        print("[INFO] The content of members.txt has been copied to the clipboard.")
+    except Exception as e:
+        print(f"[ERROR] Failed to copy {output_file} content to clipboard: {e}")
 
-
-def try_locate_image(image_path, confidences, scroll_steps=0, scroll_amount=-300):
-    """
-    画像マッチングを複数のconfidence値で試し、スクロールも行う。
-    confidences: confidence値のリスト(高→低)で試す
-    scroll_steps: スクロール試行回数
-    scroll_amount: 一回のscrollで動かす距離(-300は下方向)
-    """
-    for conf in confidences:
-        print(f"[DEBUG] Trying locateOnScreen with confidence={conf}")
-        loc = safe_locate_on_screen(image_path, confidence=conf)
-        if loc:
-            return loc
-
-        # スクロールしながら探す
-        for attempt in range(scroll_steps):
-            pyautogui.scroll(scroll_amount)
-            time.sleep(1)
-            loc = safe_locate_on_screen(image_path, confidence=conf)
-            if loc:
-                return loc
-
-    return None
-
-
-for i in range(5, 0, -1):
-    print(i + 1)
-    time.sleep(1)
-
-for page in range(1, num_pages + 1):
-    # Chromeウィンドウアクティブ化
-    # chrome_windows = [w for w in gw.getAllWindows() if "Google Chrome" in w.title]
-    # if not chrome_windows:
-        # print("[ERROR] Google Chromeウィンドウが見つかりません。")
-        # break
-
-    # chrome_window = chrome_windows[0]
-    # chrome_window.activate()
-
-    # 全選択＆コピー（キーマップを考慮してwinleft使用）
-    pyautogui.hotkey("winleft", "a")
-    time.sleep(0.5)
-    pyautogui.hotkey("winleft", "c")
-    time.sleep(0.5)
-
-    copied_text = pyperclip.paste()
-    members = extract_members(copied_text)
-    all_pages_members.extend(members)
-
-    if page < num_pages:
-        print(f"[INFO] Searching next page button on page {page}")
-
-        # デバッグ情報
-        screen_size = pyautogui.size()
-        print(f"[DEBUG] Screen size: {screen_size}")
-        mouse_pos = pyautogui.position()
-        print(f"[DEBUG] Current mouse position: {mouse_pos}")
-        print("[DEBUG] Checking if next_button.png exists in current directory:", os.path.exists(next_button_image))
-
-        confidences = [0.7, 0.6]
-
-        next_button_location = try_locate_image(next_button_image, confidences, scroll_steps=5, scroll_amount=-300)
-
-        if not next_button_location:
-            print("[WARN] Next page button not found, taking debug screenshot...")
-            debug_screenshot()
-            print("[ERROR] Could not locate next page button after multiple attempts.")
-            break
-
-        next_center = pyautogui.center(next_button_location)
-        print(f"[DEBUG] Next button found at: {next_button_location}, center: {next_center}")
-
-        pyautogui.moveTo(next_center, duration=0.5)
-        pyautogui.click()
-
-        print("[INFO] Clicked next page button, waiting for page to load...")
-        time.sleep(5)  # 待機時間を増やす
-        pyautogui.press("home")  # ページの先頭へ戻る
-
-output_file = "members.txt"
-with open(output_file, "w", encoding="utf-8") as f:
-    f.write("名前,メール,ロール\n")
-    for name, email, role in all_pages_members:
-        f.write(f"{name},{email},{role}\n")
-
-print("[INFO] すべてのページからデータを取得しました。")
-print(f"[INFO] メンバー一覧は {output_file} に出力されました。")
+if __name__ == "__main__":
+    main()
